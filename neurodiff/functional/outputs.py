@@ -1,4 +1,6 @@
 """
+Comparisons that directly compare the outputs of two models.
+
 TODO: Take more inspiration from PyTorch's [losses](https://pytorch.org/docs/stable/nn.html#distance-functions)
 E.g.: CTCLoss, NLLLoss, PoissonNLLLoss, GaussianNLLLoss, BCELoss, BCEWithLogitsLoss, MarginRankingLoss, 
 HingeEmbeddingLoss, MultiLabelMarginLoss, HuerLoss, SmoothL1Loss, SoftMarginLoss, MultiLabelSoftMarginLoss, 
@@ -14,11 +16,44 @@ import torch.nn as nn
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-from neurodiff.compare import DataDependentComparisonMixin, Divergence, Metric
+from neurodiff.compare import Comparison
 
 
-class LP(Metric, DataDependentComparisonMixin):
-    """Calculate the L-p divergence between two models."""
+class OutputComparison(Comparison):
+    """
+    A mixin for data-dependent comparisons. 
+    Yes, mixins are often considered harmful, but GPT-4 called this a reasonable idea.
+    """
+
+    def __init__(self, dataloader: DataLoader, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dataloader = dataloader
+
+    def compare_batch(self, model1: nn.Module, model2: nn.Module, inputs: Tensor, outputs: Tensor):
+        """Compare model1 and model2 on a single batch. Only required for data-dependent comparisons."""
+        raise NotImplementedError
+    
+    def compare(self, model1: nn.Module, model2: nn.Module):
+        """Compare model1 and model2 using the data-dependent comparison."""
+        if not self.dataloader:
+            raise ValueError("Dataloader must be provided for data-dependent comparisons.")
+
+        total_diff = 0.0
+
+        with self.eval(model1, model2):
+            for inputs, outputs in self.dataloader:
+                inputs, outputs = inputs.to(self.device), outputs.to(self.device)
+                diff = self.compare_batch(model1, model2, inputs, outputs)    
+            
+                total_diff += diff.item()
+
+        return total_diff / len(self.dataloader)
+
+
+class LP(OutputComparison):
+    """Calculate the L-p distance between two models' outputs."""
+    type_ = 'metric'
+
     def __init__(self, dataloader: DataLoader, reduction='mean', device='cpu', p=2, eps=1e-06):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device)
         self.p = p
@@ -34,18 +69,24 @@ class LP(Metric, DataDependentComparisonMixin):
 
 class L1(LP):
     """Calculate the L1 divergence between two models."""
+    type_ = 'metric'
+
     def __init__(self, dataloader: DataLoader, reduction='mean', device='cpu'):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device, p=1)
 
 
 class L2(LP):
     """Calculate the L2 divergence between two models."""
+    type_ = 'metric'
+
     def __init__(self, dataloader: DataLoader, reduction='mean', device='cpu'):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device, p=2)
 
 
-class CrossEntropy(Divergence, DataDependentComparisonMixin):
+class CrossEntropy(OutputComparison):
     """Calculate the cross-entropy between two models."""
+    type_ = 'divergence'
+
     def __init__(self, dataloader: DataLoader, reduction='mean', device='cpu'):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device)
         self.criterion = nn.CrossEntropyLoss(reduction='sum')
@@ -56,8 +97,11 @@ class CrossEntropy(Divergence, DataDependentComparisonMixin):
 
         return self.criterion(outputs1, outputs2)
 
-class KLDivergence(Divergence, DataDependentComparisonMixin):
+
+class KLDivergence(OutputComparison):
     """Calculate the KL divergence between two models."""
+    type_ = 'divergence'
+
     def __init__(self, dataloader: DataLoader, reduction='mean', device='cpu'):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device)
         self.criterion = nn.KLDivLoss
@@ -72,8 +116,9 @@ class KLDivergence(Divergence, DataDependentComparisonMixin):
         return self.criterion(log_softmax1, softmax2)
 
 
-class SupNorm(Metric, DataDependentComparisonMixin):
+class SupNorm(OutputComparison):
     """Calculate the sup-norm between the outputs of model1 and model2."""
+    type_ = 'metric'
 
     def __init__(self, dataloader: DataLoader, reduction='mean', device='cpu'):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device)
