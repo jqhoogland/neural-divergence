@@ -15,9 +15,6 @@ class Comparison:
         self.reduction = reduction
         self.device = device
 
-        if reduction != 'mean':       
-            raise NotImplementedError
-
     def compare(self, model1: nn.Module, model2: nn.Module):
         """Compare model1 and model2."""
         raise NotImplementedError

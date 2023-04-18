@@ -16,6 +16,7 @@ class LossComparison(Comparison):
     """
 
     def __init__(self, dataloader: DataLoader, loss: Callable, *args, **kwargs):
+        # TODO: No need for reduction
         super().__init__(*args, **kwargs)
         self.dataloader = dataloader
         self.loss = loss

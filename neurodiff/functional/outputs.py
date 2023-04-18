@@ -7,10 +7,6 @@ HingeEmbeddingLoss, MultiLabelMarginLoss, HuerLoss, SmoothL1Loss, SoftMarginLoss
 CosineEmbeddingLoss, MultiMarginLoss, TripletMarginLoss, TripletMarginWithDistanceLoss, CosineSimilarity,
 
 """
-
-from contextlib import contextmanager
-from typing import Optional
-
 import torch
 import torch.nn as nn
 from torch import Tensor
@@ -21,8 +17,7 @@ from neurodiff.compare import Comparison
 
 class OutputComparison(Comparison):
     """
-    A mixin for data-dependent comparisons. 
-    Yes, mixins are often considered harmful, but GPT-4 called this a reasonable idea.
+    A class for data-dependent comparisons over outputs. 
     """
 
     def __init__(self, dataloader: DataLoader, *args, **kwargs):
@@ -47,10 +42,13 @@ class OutputComparison(Comparison):
             
                 total_diff += diff.item()
 
-        return total_diff / len(self.dataloader)
+        if self.reduction == 'mean':
+            total_diff /= len(self.dataloader)
+
+        return total_diff
 
 
-class LP(OutputComparison):
+class LPOutputs(OutputComparison):
     """Calculate the L-p distance between two models' outputs."""
     type_ = 'metric'
 
@@ -67,7 +65,7 @@ class LP(OutputComparison):
         return self.criterion(outputs1, outputs2)
 
 
-class L1(LP):
+class L1Outputs(LPOutputs):
     """Calculate the L1 divergence between two models."""
     type_ = 'metric'
 
@@ -75,7 +73,7 @@ class L1(LP):
         super().__init__(dataloader=dataloader, reduction=reduction, device=device, p=1)
 
 
-class L2(LP):
+class L2Outputs(LPOutputs):
     """Calculate the L2 divergence between two models."""
     type_ = 'metric'
 
@@ -116,7 +114,7 @@ class KLDivergence(OutputComparison):
         return self.criterion(log_softmax1, softmax2)
 
 
-class SupNorm(OutputComparison):
+class SupNormOutputs(OutputComparison):
     """Calculate the sup-norm between the outputs of model1 and model2."""
     type_ = 'metric'
 
